@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Droplet, ThermometerSun, Leaf, Wind } from 'lucide-react';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { db } from '../firebase';
 
 const StatCard = ({ title, value, unit, icon, trend, delay }) => (
   <motion.div 
