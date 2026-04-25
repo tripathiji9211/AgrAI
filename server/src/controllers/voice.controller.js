@@ -39,16 +39,25 @@ exports.processVoiceQuery = async (req, res) => {
       responseText = await result.response.text();
     } else {
       // Mock Intent routing
-      if (transcript.toLowerCase().includes('disease')) {
-        responseText = "Navigating you to the disease detection tool.";
-      } else if (transcript.toLowerCase().includes('weather') || transcript.toLowerCase().includes('risk')) {
-        responseText = "Checking predictive risk algorithms.";
+      const msgLow = transcript.toLowerCase();
+      if (msgLow.includes('disease') || msgLow.includes('sick')) {
+        responseText = "I detected a disease query. Navigating you to the disease detection tool for computer vision analysis.";
+      } else if (msgLow.includes('weather') || msgLow.includes('risk') || msgLow.includes('rain')) {
+        responseText = "Checking predictive risk algorithms regarding incoming weather conditions. Please check your Dashboard for high-risk FCM alerts.";
+      } else if (msgLow.includes('soil') || msgLow.includes('fertilizer')) {
+        responseText = "Accessing soil telemetry. Your latest Moisture levels and Nitrogen rates are visualized on the main dashboard.";
+      } else {
+        responseText = "Voice command received. I am analyzing the agronomical context.";
       }
     }
 
     res.json({ response: responseText, intentMatched: true });
   } catch (error) {
-    console.error("[Voice Controller Error]", error.message);
-    res.status(500).json({ error: "Failed to process voice query." });
+    console.error("[Voice Controller Error]", error.status, error.message);
+    let userFriendlyError = "Failed to process voice query.";
+    if (error.status === 404 || error.status === 403 || error.status === 400) {
+      userFriendlyError = "Voice intent failed due to invalid GEMINI_API_KEY. Please check your .env configuration.";
+    }
+    res.status(500).json({ error: userFriendlyError });
   }
 };

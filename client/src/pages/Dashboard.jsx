@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Droplet, ThermometerSun, Leaf, Wind } from 'lucide-react';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { db } from '../../firebase';
 
 const StatCard = ({ title, value, unit, icon, trend, delay }) => (
   <motion.div 
@@ -34,31 +36,41 @@ const Dashboard = () => {
     nitrogen: '45',
     wind: '12'
   });
+  const [recentPredictions, setRecentPredictions] = useState([]);
+  const [alerts, setAlerts] = useState([]);
 
   useEffect(() => {
+    // 1. Fetch Live IoT Telemetry
     const fetchTelemetry = async () => {
       try {
         const res = await fetch('http://localhost:5000/api/iot/latest');
         const { data } = await res.json();
         if (data && data.length > 0) {
           const latest = data[data.length - 1];
-          setTelemetry(prev => ({
-            ...prev,
-            moisture: latest.moisture,
-            temperature: latest.temperature,
-            nitrogen: latest.nitrogen
-          }));
+          setTelemetry(prev => ({ ...prev, moisture: latest.moisture, temperature: latest.temperature, nitrogen: latest.nitrogen }));
         }
-      } catch (err) {
-        console.log("Using fallback telemetry data.");
-      }
+      } catch (err) {}
     };
-    
-    // Poll every 5 seconds
     const intervalId = setInterval(fetchTelemetry, 5000);
-    fetchTelemetry(); // Initial fetch
-    
-    return () => clearInterval(intervalId);
+    fetchTelemetry();
+
+    // 2. Fetch Live Firestore Predictions
+    const predQuery = query(collection(db, 'disease_predictions'), orderBy('timestamp', 'desc'), limit(3));
+    const unsubscribePred = onSnapshot(predQuery, (snapshot) => {
+      setRecentPredictions(snapshot.docs.map(doc => doc.data()));
+    }, error => console.log('Firestore prediction read error:', error.message));
+
+    // 3. Fetch Live Firestore Alerts
+    const alertQuery = query(collection(db, 'risk_assessments'), orderBy('timestamp', 'desc'), limit(3));
+    const unsubscribeAlerts = onSnapshot(alertQuery, (snapshot) => {
+      setAlerts(snapshot.docs.map(doc => doc.data()));
+    }, error => console.log('Firestore alert read error:', error.message));
+
+    return () => {
+      clearInterval(intervalId);
+      unsubscribePred();
+      unsubscribeAlerts();
+    };
   }, []);
 
   return (
@@ -88,9 +100,20 @@ const Dashboard = () => {
           transition={{ delay: 0.5 }}
           className="lg:col-span-2 glass-card p-6 min-h-[400px]"
         >
-          <h2 className="text-xl font-semibold mb-4 text-white">Yield Prediction Matrix</h2>
-          <div className="h-full w-full flex items-center justify-center border-2 border-dashed border-slate-700/50 rounded-xl bg-slate-900/30">
-            <p className="text-slate-500">Analytics visualization loading...</p>
+          <h2 className="text-xl font-semibold mb-4 text-white">Recent ML Classifications</h2>
+          <div className="space-y-3">
+            {recentPredictions.length === 0 ? (
+              <p className="text-slate-500">Analytics visualization loading or no records found...</p>
+            ) : (
+              recentPredictions.map((pred, i) => (
+                <div key={i} className="flex justify-between p-3 rounded-lg bg-slate-900/50 border border-slate-700">
+                  <span className="text-slate-300 font-medium">Image Analysis ({pred.filename || 'Camera'})</span>
+                  <span className={pred.disease === 'Healthy' ? 'text-emerald-400' : 'text-amber-400'}>
+                    {pred.disease} ({Math.round(pred.confidence)}% conf)
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </motion.div>
 
@@ -102,16 +125,16 @@ const Dashboard = () => {
         >
           <h2 className="text-xl font-semibold mb-4 text-white">Smart Alerts</h2>
           <div className="space-y-4">
-            {[
-              { title: 'Irrigation Needed', time: '10 mins ago', type: 'warning' },
-              { title: 'Optimal Harvest Window', time: '2 hours ago', type: 'success' },
-              { title: 'Low Potassium Risk', time: '1 day ago', type: 'error' },
-            ].map((alert, i) => (
-              <div key={i} className="p-4 rounded-xl bg-slate-900/50 border border-slate-700/50 flex flex-col gap-1 hover:border-emerald-500/30 transition-colors">
-                <span className="text-sm font-medium text-slate-200">{alert.title}</span>
-                <span className="text-xs text-slate-500">{alert.time}</span>
-              </div>
-            ))}
+            {alerts.length === 0 ? (
+              <p className="text-slate-500 text-sm">No recent risk alerts.</p>
+            ) : (
+              alerts.map((alert, i) => (
+                <div key={i} className={`p-4 rounded-xl bg-slate-900/50 border flex flex-col gap-1 hover:border-emerald-500/30 transition-colors ${alert.riskLevel === 'HIGH' || alert.riskLevel === 'CRITICAL' ? 'border-red-500/50' : 'border-slate-700/50'}`}>
+                  <span className="text-sm font-medium text-slate-200">{alert.action}</span>
+                  <span className={`text-xs ${alert.riskLevel === 'CRITICAL' ? 'text-red-400 font-bold' : 'text-slate-500'}`}>Level: {alert.riskLevel}</span>
+                </div>
+              ))
+            )}
           </div>
         </motion.div>
       </div>

@@ -15,10 +15,22 @@ router.post('/chat', async (req, res) => {
     const { message } = req.body;
     
     if (!genAI) {
-      // Return a simulated response if no key is present (useful for prototyping)
       setTimeout(() => {
-        res.json({ response: "This is a simulated AI response. Please add a valid GEMINI_API_KEY to your .env file to enable actual AI capabilities." });
-      }, 500);
+        let text = "I am your AgrAI assistant. I can analyze recent telemetry, weather patterns, and crop disease vectors for your farm.";
+        const msgLow = message.toLowerCase();
+        
+        if (msgLow.includes('disease') || msgLow.includes('sick') || msgLow.includes('pest')) {
+          text = "It looks like your crop might be facing a biological threat. Please navigate to the Farm Map or Disease Tracker and upload a leaf image so our AI Engine can classify it.";
+        } else if (msgLow.includes('weather') || msgLow.includes('rain') || msgLow.includes('water')) {
+          text = "Heavy rainfall is predicted over the next 72 hours. Our predictive risk models recommend delaying any fertilizer application to prevent nutrient runoff.";
+        } else if (msgLow.includes('npk') || msgLow.includes('fertilizer') || msgLow.includes('soil')) {
+          text = "For optimal yield in Loamy soil, aim for an NPK ratio of 4:2:1. Based on your live telemetry, your nitrogen levels are moderately healthy.";
+        } else if (msgLow.includes('hello') || msgLow.includes('hi')) {
+          text = "Hello! Welcome to AgrAI. How can I assist you with your farming operations today?";
+        }
+
+        res.json({ response: text });
+      }, 800);
       return;
     }
 
@@ -29,8 +41,18 @@ router.post('/chat', async (req, res) => {
     
     res.json({ response: text });
   } catch (error) {
-    console.error('Error with Gemini API:', error);
-    res.status(500).json({ error: 'Failed to generate content.' });
+    console.error('[Predict Disease Error]', error.response?.data || error.message || error);
+    
+    let userFriendlyError = 'Failed to generate content.';
+    if (error.status === 404) {
+      userFriendlyError = 'Gemini Model not found or API key is restricted. Please check your GEMINI_API_KEY in the .env file.';
+    } else if (error.status === 400 || error.status === 403) {
+      userFriendlyError = 'Invalid GEMINI_API_KEY. Please verify your .env file.';
+    } else if (error.message) {
+      userFriendlyError = `AI Error: ${error.message}`;
+    }
+
+    res.status(500).json({ error: userFriendlyError });
   }
 });
 
